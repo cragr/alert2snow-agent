@@ -1,0 +1,43 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"ExampleAlert\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "servicenow-bridge",
+  "groupLabels": {
+    "alertname": "ExampleAlert"
+  },
+  "commonLabels": {
+    "alertname": "ExampleAlert",
+    "severity": "warning",
+    "namespace": "openshift-monitoring",
+    "pod": "prometheus-k8s-0",
+    "container": "prometheus"
+  },
+  "commonAnnotations": {
+    "summary": "Example alert for testing",
+    "description": "This is a test alert to verify the bridge is working correctly."
+  },
+  "externalURL": "http://alertmanager-main-openshift-monitoring.apps.cluster.example.com",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "ExampleAlert",
+        "severity": "warning",
+        "namespace": "openshift-monitoring",
+        "pod": "prometheus-k8s-0",
+        "container": "prometheus",
+        "cluster": "production-cluster"
+      },
+      "annotations": {
+        "summary": "Example alert for testing",
+        "description": "This is a test alert to verify the bridge is working correctly. It includes various labels and annotations that would typically be present in a real Prometheus alert."
+      },
+      "startsAt": "2024-01-15T10:00:00.000Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://prometheus-k8s-openshift-monitoring.apps.cluster.example.com/graph?g0.expr=up%7Bjob%3D%22prometheus-k8s%22%7D+%3D%3D+0",
+      "fingerprint": "abc123def456"
+    }
+  ]
+}

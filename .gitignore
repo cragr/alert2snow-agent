@@ -1,0 +1,85 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+alert2snow-agent
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+coverage.txt
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+# Note: vendor/ is NOT ignored - committed for reproducible cross-arch container builds
+
+# Go build cache
+.cache/
+
+# Container build artifacts
+*.tar
+*.tar.gz
+*.tgz
+image-*.tar
+
+# Helm chart artifacts
+helm/alert2snow-agent/charts/
+helm/alert2snow-agent/*.tgz
+*.lock
+
+# IDE and editor files
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (GoLand, IntelliJ)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment files (may contain secrets)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Debug files
+debug
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

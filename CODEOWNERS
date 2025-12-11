@@ -1,0 +1,15 @@
+# Code Owners for alert2snow-agent
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for all files
+* @cragr
+
+# Go source code
+/cmd/ @cragr
+/internal/ @cragr
+
+# Helm chart
+/helm/ @cragr
+
+# Container configuration
+Containerfile @cragr

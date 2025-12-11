@@ -1,0 +1,11 @@
+{
+  "short_description": "[cluster-name] KubePodCrashLooping in namespace: openshift-monitoring",
+  "description": "Alert: KubePodCrashLooping\nCluster: cluster-name\nEnvironment: lab\nSeverity: warning\nStarted At: 2025-11-11 01:13:00 UTC\n\nSummary:\nPod is crash looping\n\nDescription:\nPod prometheus-k8s-0 in namespace openshift-monitoring is restarting frequently. This may indicate a problem with the pod configuration or the application running in it.\n\nResource Information:\n  Namespace: openshift-monitoring\n  Pod: prometheus-k8s-0\n  Container: prometheus\n\nOpenShift Console: https://console-openshift-console.apps.cluster-name.example.com/k8s/cluster/projects/openshift-monitoring\n\nPrometheus Link: https://prometheus-k8s-openshift-monitoring.apps.cluster-name.example.com/graph?g0.expr=rate(kube_pod_container_status_restarts_total%5B15m%5D)\n\nAll Labels:\n  alertname: KubePodCrashLooping\n  cluster: cluster-name\n  container: prometheus\n  namespace: openshift-monitoring\n  pod: prometheus-k8s-0\n  severity: warning\n  prometheus: openshift-monitoring/k8s\n  job: kube-state-metrics\n",
+  "impact": "3",
+  "urgency": "3",
+  "category": "software",
+  "subcategory": "openshift",
+  "assignment_group": "",
+  "caller_id": "",
+  "correlation_id": "936e7502220ed3ad"
+}

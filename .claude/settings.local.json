@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod init:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(helm lint:*)",
+      "Bash(go mod verify:*)",
+      "Bash(go list:*)",
+      "Bash(go mod download:*)",
+      "Bash(go mod:*)",
+      "Bash(test -f vendor/modules.txt)",
+      "Bash(helm template:*)",
+      "Bash(test:*)",
+      "Bash(cat:*)"
+    ]
+  }
+}
