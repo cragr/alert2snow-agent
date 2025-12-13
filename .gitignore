@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-alert2snow-agent
+/alert2snow-agent
 
 # Test binary, built with `go test -c`
 *.test

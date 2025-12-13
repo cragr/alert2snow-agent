@@ -1,0 +1,14 @@
+apiVersion: v2
+name: alert2snow-agent
+description: Alertmanager to ServiceNow incident bridge for OpenShift
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - alertmanager
+  - servicenow
+  - openshift
+  - prometheus
+  - monitoring
+maintainers:
+  - name: cragr

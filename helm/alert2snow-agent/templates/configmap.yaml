@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "alert2snow-agent.fullname" . }}
+  labels:
+    {{- include "alert2snow-agent.labels" . | nindent 4 }}
+data:
+  SERVICENOW_BASE_URL: {{ .Values.servicenow.baseUrl | quote }}
+  SERVICENOW_ENDPOINT_PATH: {{ .Values.servicenow.endpointPath | quote }}
+  SERVICENOW_CATEGORY: {{ .Values.servicenow.category | quote }}
+  SERVICENOW_SUBCATEGORY: {{ .Values.servicenow.subcategory | quote }}
+  {{- if .Values.servicenow.assignmentGroup }}
+  SERVICENOW_ASSIGNMENT_GROUP: {{ .Values.servicenow.assignmentGroup | quote }}
+  {{- end }}
+  {{- if .Values.servicenow.callerId }}
+  SERVICENOW_CALLER_ID: {{ .Values.servicenow.callerId | quote }}
+  {{- end }}
+  SERVICENOW_ROOT_CAUSE: {{ .Values.servicenow.rootCause | quote }}
+  SERVICENOW_URGENCY: {{ .Values.servicenow.urgency | quote }}
+  SERVICENOW_IMPACT: {{ .Values.servicenow.impact | quote }}
+  HTTP_PORT: {{ .Values.config.httpPort | quote }}
+  CLUSTER_LABEL_KEY: {{ .Values.config.clusterLabelKey | quote }}
+  ENVIRONMENT_LABEL_KEY: {{ .Values.config.environmentLabelKey | quote }}
