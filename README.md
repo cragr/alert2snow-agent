@@ -287,41 +287,65 @@ helm uninstall alert2snow --namespace monitoring
 Add the following to your Alertmanager configuration to route critical alerts to ServiceNow while minimizing ticket spam:
 
 ```yaml
-receivers:
-  - name: 'default'
-    # Your default receiver (e.g., email, Slack, or null)
+global:
+  resolve_timeout: 5m
+  http_config:
+    proxy_from_environment: true
 
-  - name: 'servicenow-bridge'
-    webhook_configs:
-      - url: 'http://alert2snow-alert2snow-agent.alert2snow-agent.svc.cluster.local:8080/alertmanager/webhook'
-        send_resolved: true
+# Inhibition rules - suppress child alerts when parent infrastructure alerts fire
+inhibit_rules:
+  # When a node is down, suppress pod-level alerts on that node
+  - source_matchers:
+      - 'alertname="KubeNodeNotReady"'
+    target_matchers:
+      - 'alertname=~"KubePod.*"'
+    equal:
+      - node
+  # When a namespace is terminating, suppress alerts from that namespace
+  - source_matchers:
+      - 'alertname="KubeNamespaceTerminating"'
+    target_matchers:
+      - 'severity="critical"'
+    equal:
+      - namespace
 
 route:
-  receiver: 'default'
-  group_by: ['alertname', 'cluster', 'namespace']
   group_wait: 30s
   group_interval: 5m
-  repeat_interval: 4h
+  repeat_interval: 12h
+  receiver: default
   routes:
-    # Route critical alerts to ServiceNow (except excluded alerts)
+    # Watchdog heartbeat - high-frequency ping for dead man's switch monitoring
     - matchers:
-        - severity="critical"
-        - alertname!="PodDisruptionBudgetLimit"
-        - alertname!="Watchdog"
-      receiver: 'servicenow-bridge'
-      group_by: ['alertname', 'cluster', 'namespace']
+        - 'alertname="Watchdog"'
+      repeat_interval: 2m
+      receiver: watchdog
+
+    # Critical alerts to ServiceNow (with exclusions for non-actionable alerts)
+    - matchers:
+        - 'severity="critical"'
+        - 'alertname!~"^(PodDisruptionBudgetLimit|InfoInhibitor|AlertmanagerReceiversNotConfigured)$"'
+      receiver: servicenow-bridge
+      group_by:
+        - alertname
+        - namespace
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
-      continue: false
+      continue: true  # Also send to default receiver for backup/audit logging
 
-# Optional: Suppress lower-severity alerts when critical alert is firing
-inhibit_rules:
-  - source_matchers:
-      - severity="critical"
-    target_matchers:
-      - severity=~"warning|info"
-    equal: ['alertname', 'cluster', 'namespace']
+receivers:
+  - name: default
+  - name: watchdog
+  - name: servicenow-bridge
+    webhook_configs:
+      - url: 'http://alert2snow-alert2snow-agent.alert2snow-agent.svc.cluster.local:8080/alertmanager/webhook'
+        send_resolved: true
+        max_alerts: 50
+        http_config:
+          proxy_from_environment: true
+          tls_config:
+            insecure_skip_verify: false
 ```
 
 ### Configuration Explained
