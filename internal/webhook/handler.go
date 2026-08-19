@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/cragr/alert2snow-agent/internal/metrics"
 	"github.com/cragr/alert2snow-agent/internal/models"
 	"github.com/cragr/alert2snow-agent/internal/servicenow"
 )
@@ -25,14 +26,16 @@ type ServiceNowClient interface {
 type Handler struct {
 	snowClient  ServiceNowClient
 	transformer *Transformer
+	metrics     *metrics.Metrics
 	logger      *slog.Logger
 }
 
 // NewHandler creates a new webhook handler.
-func NewHandler(snowClient ServiceNowClient, transformer *Transformer, logger *slog.Logger) *Handler {
+func NewHandler(snowClient ServiceNowClient, transformer *Transformer, m *metrics.Metrics, logger *slog.Logger) *Handler {
 	return &Handler{
 		snowClient:  snowClient,
 		transformer: transformer,
+		metrics:     m,
 		logger:      logger,
 	}
 }
@@ -69,12 +72,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var errCount int
 
 	for _, alert := range payload.Alerts {
+		h.metrics.AlertReceived(alert.Status)
+
 		if err := h.processAlert(ctx, alert, payload.ExternalURL); err != nil {
 			h.logger.Error("failed to process alert",
 				"alertname", alert.Labels["alertname"],
 				"status", alert.Status,
 				"error", err,
 			)
+			h.metrics.AlertFailed(alert.Status)
 			errCount++
 		}
 	}
@@ -147,6 +153,7 @@ func (h *Handler) handleFiringAlert(ctx context.Context, alert models.Alert, ext
 			"incident_number", existing.Number,
 			"sys_id", existing.SysID,
 		)
+		h.metrics.IncidentSkipped(alertname)
 		return nil
 	}
 
@@ -163,6 +170,7 @@ func (h *Handler) handleFiringAlert(ctx context.Context, alert models.Alert, ext
 		"incident_number", result.Number,
 		"sys_id", result.SysID,
 	)
+	h.metrics.IncidentCreated(alertname)
 
 	return nil
 }
@@ -211,6 +219,7 @@ func (h *Handler) handleResolvedAlert(ctx context.Context, correlationID, alertn
 			"sys_id", inc.SysID,
 			"incident_number", inc.Number,
 		)
+		h.metrics.IncidentResolved()
 	}
 
 	return errors.Join(errs...)

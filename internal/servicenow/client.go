@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cragr/alert2snow-agent/internal/config"
+	"github.com/cragr/alert2snow-agent/internal/metrics"
 	"github.com/cragr/alert2snow-agent/internal/models"
 )
 
@@ -25,21 +26,30 @@ type Client struct {
 	rootCause    string
 	httpClient   *http.Client
 	retryConfig  RetryConfig
+	metrics      *metrics.Metrics
 	logger       *slog.Logger
 }
 
 // NewClient creates a new ServiceNow API client.
-func NewClient(cfg *config.Config, logger *slog.Logger) *Client {
+func NewClient(cfg *config.Config, m *metrics.Metrics, logger *slog.Logger) *Client {
 	return &Client{
 		baseURL:      cfg.ServiceNowBaseURL,
 		endpointPath: cfg.ServiceNowEndpointPath,
 		username:     cfg.ServiceNowUsername,
 		password:     cfg.ServiceNowPassword,
 		rootCause:    cfg.ServiceNowRootCause,
-		httpClient:   &http.Client{Timeout: 30_000_000_000}, // 30 seconds
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
 		retryConfig:  DefaultRetryConfig(),
+		metrics:      m,
 		logger:       logger,
 	}
+}
+
+// observe records the outcome and duration of a logical ServiceNow operation.
+// Deferred by each exported method so the measurement spans the retry wrapper
+// rather than each individual attempt.
+func (c *Client) observe(operation string, start time.Time, err *error) {
+	c.metrics.ServiceNowRequest(operation, *err, time.Since(start).Seconds())
 }
 
 // CreateIncidentResult contains the result of creating an incident.
@@ -49,7 +59,9 @@ type CreateIncidentResult struct {
 }
 
 // CreateIncident creates a new incident in ServiceNow and returns the incident number.
-func (c *Client) CreateIncident(ctx context.Context, incident models.ServiceNowIncident) (*CreateIncidentResult, error) {
+func (c *Client) CreateIncident(ctx context.Context, incident models.ServiceNowIncident) (result *CreateIncidentResult, err error) {
+	defer c.observe(metrics.OpCreate, time.Now(), &err)
+
 	endpoint := c.baseURL + c.endpointPath
 
 	body, err := json.Marshal(incident)
@@ -61,8 +73,6 @@ func (c *Client) CreateIncident(ctx context.Context, incident models.ServiceNowI
 		"correlation_id", incident.CorrelationID,
 		"short_description", incident.ShortDescription,
 	)
-
-	var result *CreateIncidentResult
 
 	err = WithRetry(ctx, c.retryConfig, func() error {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -139,7 +149,9 @@ func (c *Client) FindOpenIncidentsByCorrelationID(ctx context.Context, correlati
 
 // findOpenIncidents queries for open incidents matching a correlation ID,
 // newest first, up to limit.
-func (c *Client) findOpenIncidents(ctx context.Context, correlationID string, limit int) ([]models.ServiceNowResult, error) {
+func (c *Client) findOpenIncidents(ctx context.Context, correlationID string, limit int) (results []models.ServiceNowResult, err error) {
+	defer c.observe(metrics.OpFind, time.Now(), &err)
+
 	// Encoded query: correlation_id = <id> AND state NOT IN (6,7,8), newest
 	// first. Built through url.Values so the whole thing is escaped exactly
 	// once — the "^" separators and the "NOT IN" operator do not survive being
@@ -159,9 +171,7 @@ func (c *Client) findOpenIncidents(ctx context.Context, correlationID string, li
 		"limit", limit,
 	)
 
-	var results []models.ServiceNowResult
-
-	err := WithRetry(ctx, c.retryConfig, func() error {
+	err = WithRetry(ctx, c.retryConfig, func() error {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
@@ -202,7 +212,9 @@ func (c *Client) findOpenIncidents(ctx context.Context, correlationID string, li
 }
 
 // ResolveIncident updates an incident's state to resolved.
-func (c *Client) ResolveIncident(ctx context.Context, sysID string) error {
+func (c *Client) ResolveIncident(ctx context.Context, sysID string) (err error) {
+	defer c.observe(metrics.OpResolve, time.Now(), &err)
+
 	endpoint := fmt.Sprintf("%s%s/%s", c.baseURL, c.endpointPath, sysID)
 
 	payload := models.ServiceNowUpdatePayload{

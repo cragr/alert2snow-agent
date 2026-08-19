@@ -1,0 +1,101 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "alert2snow-agent.fullname" . }}
+  labels:
+    {{- include "alert2snow-agent.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: alert2snow-agent
+      rules:
+        # The durable backstop for silent delivery loss. Alertmanager's retries are
+        # finite, so once they are exhausted a ServiceNow outage leaves no trace
+        # except these counters. Keyed on failures rather than on absence of
+        # incidents: a quiet cluster legitimately creates nothing for days.
+        - alert: Alert2SnowDeliveryFailing
+          expr: |
+            sum(rate(alert2snow_alerts_failed_total{namespace="{{ .Release.Namespace }}"}[15m])) > 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: alert2snow-agent is failing to deliver alerts to ServiceNow
+            description: >-
+              The agent has failed to process at least one alert in each of the last 15
+              minutes. Critical alerts are not reaching ServiceNow and Alertmanager's
+              retries may already be exhausted. Check the agent logs and ServiceNow
+              credentials and reachability.
+
+        # Every alert failing is systemic, not a poison payload. This is the
+        # condition that returns HTTP 500 to Alertmanager.
+        - alert: Alert2SnowAllDeliveriesFailing
+          expr: |
+            sum(rate(alert2snow_alerts_failed_total{namespace="{{ .Release.Namespace }}"}[10m]))
+              /
+            clamp_min(sum(rate(alert2snow_alerts_received_total{namespace="{{ .Release.Namespace }}"}[10m])), 1)
+              >= 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: alert2snow-agent is failing every ServiceNow delivery
+            description: >-
+              Every alert received in the last 10 minutes failed to process. This is
+              almost certainly a ServiceNow outage, an expired credential, or a
+              rejected ACL rather than a bad payload.
+
+        - alert: Alert2SnowServiceNowErrorRatioHigh
+          expr: |
+            sum(rate(alert2snow_servicenow_requests_total{namespace="{{ .Release.Namespace }}",outcome="error"}[15m]))
+              /
+            clamp_min(sum(rate(alert2snow_servicenow_requests_total{namespace="{{ .Release.Namespace }}"}[15m])), 0.001)
+              > {{ .Values.metrics.prometheusRule.errorRatioThreshold }}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: alert2snow-agent ServiceNow error ratio above {{ .Values.metrics.prometheusRule.errorRatioThreshold }}
+            description: >-
+              More than {{ .Values.metrics.prometheusRule.errorRatioThreshold }} of
+              ServiceNow API calls are returning errors. Non-retryable 4xx responses
+              fail immediately, so this may indicate a credential or payload problem.
+
+        - alert: Alert2SnowServiceNowLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(alert2snow_servicenow_request_duration_seconds_bucket{namespace="{{ .Release.Namespace }}"}[15m]))
+            ) > 20
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: alert2snow-agent ServiceNow p99 latency above 20s
+            description: >-
+              ServiceNow calls are taking more than 20s at p99, approaching the 30s
+              client timeout. An unindexed correlation_id column on a large incident
+              table is a common cause of this on the lookup path.
+
+        # Dedup is load-bearing: if skips stop while creations continue at volume,
+        # the lookup may be silently failing open and duplicates are accumulating.
+        - alert: Alert2SnowNotDeduplicating
+          expr: |
+            sum(rate(alert2snow_incidents_created_total{namespace="{{ .Release.Namespace }}"}[1h])) > 0
+              and
+            sum(rate(alert2snow_incidents_skipped_total{namespace="{{ .Release.Namespace }}"}[1h])) == 0
+              and
+            sum(rate(alert2snow_alerts_received_total{namespace="{{ .Release.Namespace }}",status="firing"}[1h]))
+              > 2 * sum(rate(alert2snow_incidents_created_total{namespace="{{ .Release.Namespace }}"}[1h]))
+          for: 2h
+          labels:
+            severity: info
+          annotations:
+            summary: alert2snow-agent may not be deduplicating incidents
+            description: >-
+              Firing alerts substantially outnumber created incidents yet nothing is
+              being skipped. Expect repeat firings to be skipped once an incident is
+              open; verify the correlation ID lookup is working.
+{{- end }}

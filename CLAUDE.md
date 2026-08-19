@@ -69,6 +69,7 @@ helm/             # Helm chart for OpenShift deployment
 | `SERVICENOW_USERNAME` | Basic auth username |
 | `SERVICENOW_PASSWORD` | Basic auth password |
 | `HTTP_PORT` | Listen port (default: 8080) |
+| `CONSOLE_BASE_DOMAIN` | DNS suffix for OpenShift console links (`apps.<cluster>.<domain>`); unset omits the link |
 
 ## Endpoints
 

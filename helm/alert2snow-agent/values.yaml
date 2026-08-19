@@ -64,12 +64,35 @@ config:
   httpPort: "8080"
   clusterLabelKey: "cluster"
   environmentLabelKey: "environment"
+  # DNS suffix for OpenShift console links, used as apps.<cluster>.<domain> when
+  # the domain cannot be derived from the alert's GeneratorURL. Left empty the
+  # console link is omitted rather than emitted with a guessed (dead) domain.
+  consoleBaseDomain: ""
 
 nodeSelector: {}
 
 tolerations: []
 
 affinity: {}
+
+# Prometheus Operator integration. Enable only against a build whose metrics are
+# actually incremented; scraping a no-op build yields authoritative-looking zeros.
+metrics:
+  # ServiceMonitor so the platform Prometheus scrapes /metrics.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    # Extra labels required by some Prometheus instances for selection.
+    additionalLabels: {}
+    # Set to the namespace's Prometheus when using user-workload monitoring.
+    honorLabels: false
+  # PrometheusRule with the alerting rules that make delivery failure visible.
+  prometheusRule:
+    enabled: false
+    additionalLabels: {}
+    # Fraction of ServiceNow requests failing before alerting.
+    errorRatioThreshold: 0.1
 
 # Pod disruption budget
 podDisruptionBudget:

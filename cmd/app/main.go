@@ -15,32 +15,10 @@ import (
 
 	"github.com/cragr/alert2snow-agent/internal/config"
 	"github.com/cragr/alert2snow-agent/internal/logging"
+	"github.com/cragr/alert2snow-agent/internal/metrics"
 	"github.com/cragr/alert2snow-agent/internal/servicenow"
 	"github.com/cragr/alert2snow-agent/internal/webhook"
 )
-
-var (
-	// Prometheus metrics
-	alertsReceived = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "alert2snow_alerts_received_total",
-			Help: "Total number of alerts received from Alertmanager",
-		},
-		[]string{"status"},
-	)
-	serviceNowRequests = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "alert2snow_servicenow_requests_total",
-			Help: "Total number of requests to ServiceNow",
-		},
-		[]string{"operation", "status"},
-	)
-)
-
-func init() {
-	prometheus.MustRegister(alertsReceived)
-	prometheus.MustRegister(serviceNowRequests)
-}
 
 func main() {
 	// Initialize logger
@@ -61,12 +39,15 @@ func main() {
 		"environment_label_key", cfg.EnvironmentLabelKey,
 	)
 
+	// Create metrics, registered on the default registry that /metrics serves.
+	m := metrics.New(prometheus.DefaultRegisterer)
+
 	// Create ServiceNow client
-	snowClient := servicenow.NewClient(cfg, logging.WithComponent(logger, "servicenow"))
+	snowClient := servicenow.NewClient(cfg, m, logging.WithComponent(logger, "servicenow"))
 
 	// Create webhook handler
 	transformer := webhook.NewTransformer(cfg)
-	webhookHandler := webhook.NewHandler(snowClient, transformer, logging.WithComponent(logger, "webhook"))
+	webhookHandler := webhook.NewHandler(snowClient, transformer, m, logging.WithComponent(logger, "webhook"))
 
 	// Setup HTTP routes
 	mux := http.NewServeMux()

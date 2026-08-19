@@ -186,6 +186,7 @@ curl -X POST http://localhost:8080/alertmanager/webhook \
 | `HTTP_PORT` | No | `8080` | HTTP server port |
 | `CLUSTER_LABEL_KEY` | No | `cluster` | Alert label for cluster name |
 | `ENVIRONMENT_LABEL_KEY` | No | `environment` | Alert label for environment |
+| `CONSOLE_BASE_DOMAIN` | No | - | DNS suffix for console links, used as `apps.<cluster>.<domain>` when the domain cannot be derived from the alert's `GeneratorURL`. Unset omits the link rather than emitting a dead one. |
 
 ## Endpoints
 
@@ -195,6 +196,35 @@ curl -X POST http://localhost:8080/alertmanager/webhook \
 | `/healthz` | GET | Liveness probe |
 | `/readyz` | GET | Readiness probe |
 | `/metrics` | GET | Prometheus metrics |
+
+## Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `alert2snow_alerts_received_total` | counter | `status` | Alerts received from Alertmanager |
+| `alert2snow_incidents_created_total` | counter | `alertname` | Incidents created in ServiceNow |
+| `alert2snow_incidents_resolved_total` | counter | - | Incidents resolved in ServiceNow |
+| `alert2snow_incidents_skipped_total` | counter | `alertname` | Creations skipped because an open incident already existed |
+| `alert2snow_alerts_failed_total` | counter | `status` | Alerts that could not be processed |
+| `alert2snow_servicenow_requests_total` | counter | `operation`, `outcome` | ServiceNow API calls, counted once per logical call rather than once per retry |
+| `alert2snow_servicenow_request_duration_seconds` | histogram | `operation` | End-to-end ServiceNow call duration, including retries and backoff |
+
+`alert2snow_incidents_skipped_total` is the signal that deduplication is working:
+it climbs as repeat firings are suppressed. `alert2snow_alerts_failed_total` is
+the one to alert on — a total ServiceNow outage is otherwise invisible once
+Alertmanager's finite retries are exhausted.
+
+Scraping and alerting are off by default and enabled with:
+
+```bash
+helm upgrade --install alert2snow ./helm/alert2snow-agent \
+  --set metrics.serviceMonitor.enabled=true \
+  --set metrics.prometheusRule.enabled=true
+```
+
+Both require the Prometheus Operator CRDs. Enable them only against a build that
+actually increments the counters — scraping a build that does not yields
+authoritative-looking zeros, which is worse than no metric at all.
 
 ## Container Build
 

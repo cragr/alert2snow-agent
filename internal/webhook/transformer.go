@@ -143,10 +143,13 @@ func (t *Transformer) buildDescription(alert models.Alert, cluster, environment,
 		}
 	}
 
-	// OpenShift Console link
-	if cluster != "" && namespace != "" {
-		consoleURL := t.buildConsoleURL(cluster, namespace)
-		b.WriteString(fmt.Sprintf("\nOpenShift Console: %s\n", consoleURL))
+	// OpenShift Console link. The cluster label is not required: the GeneratorURL
+	// carries the ingress domain on its own, so a missing label no longer costs
+	// the link. Omitted entirely when no domain can be determined.
+	if namespace != "" {
+		if consoleURL := t.buildConsoleURL(cluster, namespace, alert.GeneratorURL); consoleURL != "" {
+			b.WriteString(fmt.Sprintf("\nOpenShift Console: %s\n", consoleURL))
+		}
 	}
 
 	// Prometheus link
@@ -169,10 +172,42 @@ func (t *Transformer) buildDescription(alert models.Alert, cluster, environment,
 }
 
 // buildConsoleURL generates an OpenShift console URL for the namespace.
-func (t *Transformer) buildConsoleURL(cluster, namespace string) string {
-	// Extract base domain from cluster name or use a standard pattern
-	return fmt.Sprintf("https://console-openshift-console.apps.%s.example.com/k8s/cluster/projects/%s",
-		url.PathEscape(cluster), url.PathEscape(namespace))
+// The apps domain is taken from the alert's GeneratorURL when it can be parsed,
+// since that is the firing cluster's real ingress domain; otherwise it falls back
+// to apps.<cluster>.<ConsoleBaseDomain>. Returns "" when neither is available,
+// so callers omit the link rather than emitting a broken one.
+func (t *Transformer) buildConsoleURL(cluster, namespace, generatorURL string) string {
+	appsDomain := extractAppsDomainFromURL(generatorURL)
+	if appsDomain == "" {
+		if cluster == "" || t.cfg.ConsoleBaseDomain == "" {
+			return ""
+		}
+		appsDomain = fmt.Sprintf("apps.%s.%s", cluster, t.cfg.ConsoleBaseDomain)
+	}
+
+	return fmt.Sprintf("https://console-openshift-console.%s/k8s/cluster/projects/%s",
+		appsDomain, url.PathEscape(namespace))
+}
+
+// extractAppsDomainFromURL returns the "apps.<cluster>.<domain>" portion of an
+// OpenShift-style hostname, or "" if the pattern does not match.
+func extractAppsDomainFromURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	host := parsed.Hostname()
+	appsIdx := strings.Index(host, ".apps.")
+	if appsIdx == -1 {
+		return ""
+	}
+
+	return host[appsIdx+1:] // skip the leading dot, keep "apps.<cluster>.<domain>"
 }
 
 // GenerateCorrelationID creates a deterministic correlation ID from alert data.

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cragr/alert2snow-agent/internal/config"
+	"github.com/cragr/alert2snow-agent/internal/metrics"
 	"github.com/cragr/alert2snow-agent/internal/models"
 )
 
@@ -53,7 +54,7 @@ func TestClient_CreateIncident(t *testing.T) {
 		ServiceNowPassword:     "testpass",
 	}
 
-	client := NewClient(cfg, newTestLogger())
+	client := NewClient(cfg, metrics.NewNop(), newTestLogger())
 	// Disable retries for testing
 	client.retryConfig.MaxAttempts = 1
 
@@ -124,7 +125,7 @@ func TestClient_FindIncidentByCorrelationID(t *testing.T) {
 		ServiceNowPassword:     "testpass",
 	}
 
-	client := NewClient(cfg, newTestLogger())
+	client := NewClient(cfg, metrics.NewNop(), newTestLogger())
 	client.retryConfig.MaxAttempts = 1
 
 	result, err := client.FindIncidentByCorrelationID(context.Background(), "test-correlation-id")
@@ -157,7 +158,7 @@ func TestClient_FindIncidentByCorrelationID_NotFound(t *testing.T) {
 		ServiceNowPassword:     "testpass",
 	}
 
-	client := NewClient(cfg, newTestLogger())
+	client := NewClient(cfg, metrics.NewNop(), newTestLogger())
 	client.retryConfig.MaxAttempts = 1
 
 	result, err := client.FindIncidentByCorrelationID(context.Background(), "nonexistent")
@@ -204,7 +205,7 @@ func TestClient_ResolveIncident(t *testing.T) {
 		ServiceNowPassword:     "testpass",
 	}
 
-	client := NewClient(cfg, newTestLogger())
+	client := NewClient(cfg, metrics.NewNop(), newTestLogger())
 	client.retryConfig.MaxAttempts = 1
 
 	err := client.ResolveIncident(context.Background(), "sys123")
@@ -233,7 +234,7 @@ func TestClient_CreateIncident_ServerError(t *testing.T) {
 		ServiceNowPassword:     "testpass",
 	}
 
-	client := NewClient(cfg, newTestLogger())
+	client := NewClient(cfg, metrics.NewNop(), newTestLogger())
 	// Set max attempts to 2 for faster test
 	client.retryConfig.MaxAttempts = 2
 	client.retryConfig.BaseDelay = 1_000_000 // 1ms
@@ -269,7 +270,7 @@ func TestClient_CreateIncident_ClientError_NoRetry(t *testing.T) {
 		ServiceNowPassword:     "testpass",
 	}
 
-	client := NewClient(cfg, newTestLogger())
+	client := NewClient(cfg, metrics.NewNop(), newTestLogger())
 	client.retryConfig.MaxAttempts = 3
 
 	incident := models.ServiceNowIncident{

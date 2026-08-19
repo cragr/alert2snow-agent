@@ -29,6 +29,12 @@ type Config struct {
 	// Label key configuration for alert processing
 	ClusterLabelKey     string
 	EnvironmentLabelKey string
+
+	// ConsoleBaseDomain is the DNS suffix used to build OpenShift console links
+	// when the apps domain cannot be derived from the alert's GeneratorURL, as
+	// in apps.<cluster>.<ConsoleBaseDomain>. Empty omits the link rather than
+	// emitting a broken one.
+	ConsoleBaseDomain string
 }
 
 // Load reads configuration from environment variables and returns a Config.
@@ -49,6 +55,9 @@ func Load() (*Config, error) {
 		HTTPPort:                  getEnvOrDefault("HTTP_PORT", "8080"),
 		ClusterLabelKey:           getEnvOrDefault("CLUSTER_LABEL_KEY", "cluster"),
 		EnvironmentLabelKey:       getEnvOrDefault("ENVIRONMENT_LABEL_KEY", "environment"),
+		// No default: a wrong domain produces dead links in every incident, so an
+		// unset value omits the console link instead. Set per-cluster via Helm.
+		ConsoleBaseDomain: os.Getenv("CONSOLE_BASE_DOMAIN"),
 	}
 
 	if err := cfg.validate(); err != nil {
