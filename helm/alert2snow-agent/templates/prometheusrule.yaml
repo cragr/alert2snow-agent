@@ -19,13 +19,13 @@ spec:
         - alert: Alert2SnowDeliveryFailing
           expr: |
             sum(rate(alert2snow_alerts_failed_total{namespace="{{ .Release.Namespace }}"}[15m])) > 0
-          for: 15m
+          for: 5m
           labels:
             severity: critical
           annotations:
             summary: alert2snow-agent is failing to deliver alerts to ServiceNow
             description: >-
-              The agent has failed to process at least one alert in each of the last 15
+              The agent has failed to process at least one alert in the last 15
               minutes. Critical alerts are not reaching ServiceNow and Alertmanager's
               retries may already be exhausted. Check the agent logs and ServiceNow
               credentials and reachability.
@@ -38,7 +38,7 @@ spec:
               /
             clamp_min(sum(rate(alert2snow_alerts_received_total{namespace="{{ .Release.Namespace }}"}[10m])), 1)
               >= 1
-          for: 10m
+          for: 5m
           labels:
             severity: critical
           annotations:
@@ -54,7 +54,7 @@ spec:
               /
             clamp_min(sum(rate(alert2snow_servicenow_requests_total{namespace="{{ .Release.Namespace }}"}[15m])), 0.001)
               > {{ .Values.metrics.prometheusRule.errorRatioThreshold }}
-          for: 15m
+          for: 5m
           labels:
             severity: warning
           annotations:
@@ -69,7 +69,7 @@ spec:
             histogram_quantile(0.99,
               sum by (le) (rate(alert2snow_servicenow_request_duration_seconds_bucket{namespace="{{ .Release.Namespace }}"}[15m]))
             ) > 20
-          for: 15m
+          for: 5m
           labels:
             severity: warning
           annotations:
