@@ -21,3 +21,6 @@ data:
   HTTP_PORT: {{ .Values.config.httpPort | quote }}
   CLUSTER_LABEL_KEY: {{ .Values.config.clusterLabelKey | quote }}
   ENVIRONMENT_LABEL_KEY: {{ .Values.config.environmentLabelKey | quote }}
+  {{- if .Values.config.consoleBaseDomain }}
+  CONSOLE_BASE_DOMAIN: {{ .Values.config.consoleBaseDomain | quote }}
+  {{- end }}

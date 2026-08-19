@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cragr/alert2snow-agent/internal/config"
+	"github.com/cragr/alert2snow-agent/internal/metrics"
 	"github.com/cragr/alert2snow-agent/internal/models"
 	"github.com/cragr/alert2snow-agent/internal/servicenow"
 )
@@ -48,7 +49,7 @@ func newReproHandler(mock *mockServiceNowClient) *Handler {
 		ClusterLabelKey:     "cluster",
 		EnvironmentLabelKey: "environment",
 	}
-	return NewHandler(mock, NewTransformer(cfg), newTestLogger())
+	return NewHandler(mock, NewTransformer(cfg), metrics.NewNop(), newTestLogger())
 }
 
 // newStatefulFake returns a mock that behaves like ServiceNow: an incident

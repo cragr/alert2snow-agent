@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cragr/alert2snow-agent/internal/config"
+	"github.com/cragr/alert2snow-agent/internal/metrics"
 	"github.com/cragr/alert2snow-agent/internal/models"
 	"github.com/cragr/alert2snow-agent/internal/servicenow"
 )
@@ -88,7 +89,7 @@ func TestHandler_ServeHTTP_FiringAlert(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	payload := models.AlertmanagerPayload{
 		Version:  "4",
@@ -146,7 +147,7 @@ func TestHandler_ServeHTTP_ResolvedAlert(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	payload := models.AlertmanagerPayload{
 		Version:  "4",
@@ -199,7 +200,7 @@ func TestHandler_ServeHTTP_ResolvedAlert_NoExistingIncident(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	payload := models.AlertmanagerPayload{
 		Version: "4",
@@ -239,7 +240,7 @@ func TestHandler_ServeHTTP_InvalidJSON(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/alertmanager/webhook", bytes.NewReader([]byte("invalid json")))
 	rr := httptest.NewRecorder()
@@ -260,7 +261,7 @@ func TestHandler_ServeHTTP_MethodNotAllowed(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/alertmanager/webhook", nil)
 	rr := httptest.NewRecorder()
@@ -281,7 +282,7 @@ func TestHandler_ServeHTTP_MultipleAlerts(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	payload := models.AlertmanagerPayload{
 		Version: "4",
@@ -361,7 +362,7 @@ func TestHandler_ServeHTTP_ResolvedPayloadFile(t *testing.T) {
 		ServiceNowSubcategory: "openshift",
 	}
 	transformer := NewTransformer(cfg)
-	handler := NewHandler(mockClient, transformer, newTestLogger())
+	handler := NewHandler(mockClient, transformer, metrics.NewNop(), newTestLogger())
 
 	req := httptest.NewRequest(http.MethodPost, "/alertmanager/webhook", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
