@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/cragr/alert2snow-agent/internal/config"
@@ -107,17 +108,58 @@ func (c *Client) CreateIncident(ctx context.Context, incident models.ServiceNowI
 	return result, nil
 }
 
-// FindIncidentByCorrelationID searches for an existing incident by correlation ID.
-func (c *Client) FindIncidentByCorrelationID(ctx context.Context, correlationID string) (*models.ServiceNowResult, error) {
-	// Build query URL with correlation_id filter
-	endpoint := fmt.Sprintf("%s%s?sysparm_query=correlation_id=%s&sysparm_limit=1",
-		c.baseURL, c.endpointPath, url.QueryEscape(correlationID))
+// closedStates lists ServiceNow incident states that count as not-open:
+// 6 = Resolved, 7 = Closed, 8 = Canceled. Incidents in these states must not
+// suppress a new incident when the same alert fires again later.
+const closedStates = "6,7,8"
 
-	c.logger.Debug("searching for incident by correlation_id",
+// maxOpenIncidentsPerCorrelationID bounds the resolved-path query. Anything
+// approaching this is a backlog of pre-dedup duplicates, not normal operation.
+const maxOpenIncidentsPerCorrelationID = 100
+
+// FindIncidentByCorrelationID returns the most recently created OPEN incident
+// for the given correlation ID, or nil if none exists.
+func (c *Client) FindIncidentByCorrelationID(ctx context.Context, correlationID string) (*models.ServiceNowResult, error) {
+	results, err := c.findOpenIncidents(ctx, correlationID, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return &results[0], nil
+}
+
+// FindOpenIncidentsByCorrelationID returns every open incident for the given
+// correlation ID. The resolved path uses this so that duplicates created before
+// dedup was in place are all closed, rather than just one of them.
+func (c *Client) FindOpenIncidentsByCorrelationID(ctx context.Context, correlationID string) ([]models.ServiceNowResult, error) {
+	return c.findOpenIncidents(ctx, correlationID, maxOpenIncidentsPerCorrelationID)
+}
+
+// findOpenIncidents queries for open incidents matching a correlation ID,
+// newest first, up to limit.
+func (c *Client) findOpenIncidents(ctx context.Context, correlationID string, limit int) ([]models.ServiceNowResult, error) {
+	// Encoded query: correlation_id = <id> AND state NOT IN (6,7,8), newest
+	// first. Built through url.Values so the whole thing is escaped exactly
+	// once — the "^" separators and the "NOT IN" operator do not survive being
+	// concatenated into a raw URL.
+	query := fmt.Sprintf("correlation_id=%s^stateNOT IN%s^ORDERBYDESCsys_created_on",
+		correlationID, closedStates)
+
+	params := url.Values{}
+	params.Set("sysparm_query", query)
+	params.Set("sysparm_limit", strconv.Itoa(limit))
+	params.Set("sysparm_fields", "sys_id,number,state,correlation_id,short_description")
+
+	endpoint := fmt.Sprintf("%s%s?%s", c.baseURL, c.endpointPath, params.Encode())
+
+	c.logger.Debug("searching for open incidents by correlation_id",
 		"correlation_id", correlationID,
+		"limit", limit,
 	)
 
-	var result *models.ServiceNowResult
+	var results []models.ServiceNowResult
 
 	err := WithRetry(ctx, c.retryConfig, func() error {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -147,9 +189,7 @@ func (c *Client) FindIncidentByCorrelationID(ctx context.Context, correlationID 
 			return fmt.Errorf("failed to unmarshal response: %w", err)
 		}
 
-		if len(listResp.Result) > 0 {
-			result = &listResp.Result[0]
-		}
+		results = listResp.Result
 
 		return nil
 	})
@@ -158,7 +198,7 @@ func (c *Client) FindIncidentByCorrelationID(ctx context.Context, correlationID 
 		return nil, err
 	}
 
-	return result, nil
+	return results, nil
 }
 
 // ResolveIncident updates an incident's state to resolved.
@@ -211,7 +251,10 @@ func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Accept", "application/json")
 }
 
-// checkResponse validates the HTTP response from ServiceNow.
+// checkResponse validates the HTTP response from ServiceNow. Non-2xx responses
+// are returned as *RetryableError carrying the status code; whether that status
+// is actually worth retrying is decided by IsRetryable, so the classification
+// rule lives in exactly one place.
 func (c *Client) checkResponse(resp *http.Response) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil

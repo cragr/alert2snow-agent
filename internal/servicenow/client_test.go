@@ -99,8 +99,9 @@ func TestClient_FindIncidentByCorrelationID(t *testing.T) {
 		}
 
 		query := r.URL.Query().Get("sysparm_query")
-		if query != "correlation_id=test-correlation-id" {
-			t.Errorf("expected query 'correlation_id=test-correlation-id', got %q", query)
+		wantQuery := "correlation_id=test-correlation-id^stateNOT IN6,7,8^ORDERBYDESCsys_created_on"
+		if query != wantQuery {
+			t.Errorf("expected query %q, got %q", wantQuery, query)
 		}
 
 		w.WriteHeader(http.StatusOK)

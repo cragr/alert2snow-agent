@@ -177,6 +177,12 @@ func (t *Transformer) buildConsoleURL(cluster, namespace string) string {
 
 // GenerateCorrelationID creates a deterministic correlation ID from alert data.
 // This ensures the same alert always produces the same ID across multiple replicas.
+//
+// Keys and values are separated by delimiters that cannot appear in a Prometheus
+// label name, so distinct label sets cannot canonicalise to the same string.
+// Without them, {"a":"bc","d":"e"} and {"a":"b","cd":"e"} both flatten to
+// "abcde" and collide onto one ID — which, with dedup on the firing path, would
+// silently suppress a genuinely different alert.
 func GenerateCorrelationID(alertname string, labels map[string]string) string {
 	// Sort label keys for deterministic output
 	keys := make([]string, 0, len(labels))
@@ -185,11 +191,13 @@ func GenerateCorrelationID(alertname string, labels map[string]string) string {
 	}
 	sort.Strings(keys)
 
-	// Build canonical string: alertname + sorted key-value pairs
+	// Build canonical string: alertname + sorted key=value pairs.
 	var b strings.Builder
 	b.WriteString(alertname)
 	for _, k := range keys {
+		b.WriteByte('\n')
 		b.WriteString(k)
+		b.WriteByte('=')
 		b.WriteString(labels[k])
 	}
 
