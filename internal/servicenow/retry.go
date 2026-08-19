@@ -39,14 +39,20 @@ func (e *RetryableError) Unwrap() error {
 	return e.Err
 }
 
-// IsRetryable determines if an error should be retried.
+// IsRetryable determines if an error should be retried. It is the single
+// decision point for retry classification: WithRetry consults it directly so
+// callers cannot disagree with it.
+//
+// Transient failures are 429 (ServiceNow rate limiting) and 5xx. Other 4xx are
+// permanent — a malformed payload or a rejected credential will never succeed
+// on retry, and retrying only burns the budget and delays live alerts.
+// Errors that carry no status code are transport-level (connection refused,
+// timeout) and are treated as transient.
 func IsRetryable(err error) bool {
-	var retryableErr *RetryableError
-	if errors.As(err, &retryableErr) {
-		// Retry on 5xx server errors
-		return retryableErr.StatusCode >= 500
+	var apiErr *RetryableError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusTooManyRequests || apiErr.StatusCode >= http.StatusInternalServerError
 	}
-	// Retry on connection errors
 	return true
 }
 
@@ -60,13 +66,8 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 			return nil
 		}
 
-		// Check if error is retryable
-		var retryableErr *RetryableError
-		if errors.As(lastErr, &retryableErr) {
-			// Don't retry 4xx client errors
-			if retryableErr.StatusCode >= 400 && retryableErr.StatusCode < 500 {
-				return lastErr
-			}
+		if !IsRetryable(lastErr) {
+			return lastErr
 		}
 
 		// Don't sleep after the last attempt
@@ -91,14 +92,4 @@ func calculateBackoff(attempt int, baseDelay, maxDelay time.Duration) time.Durat
 		delay = maxDelay
 	}
 	return delay
-}
-
-// IsClientError checks if the status code indicates a client error (4xx).
-func IsClientError(statusCode int) bool {
-	return statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError
-}
-
-// IsServerError checks if the status code indicates a server error (5xx).
-func IsServerError(statusCode int) bool {
-	return statusCode >= http.StatusInternalServerError
 }

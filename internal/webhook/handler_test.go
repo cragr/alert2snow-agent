@@ -21,6 +21,7 @@ import (
 type mockServiceNowClient struct {
 	createIncidentFn            func(ctx context.Context, incident models.ServiceNowIncident) (*servicenow.CreateIncidentResult, error)
 	findIncidentByCorrelationFn func(ctx context.Context, correlationID string) (*models.ServiceNowResult, error)
+	findOpenIncidentsFn         func(ctx context.Context, correlationID string) ([]models.ServiceNowResult, error)
 	resolveIncidentFn           func(ctx context.Context, sysID string) error
 
 	createCalls  []models.ServiceNowIncident
@@ -42,6 +43,26 @@ func (m *mockServiceNowClient) CreateIncident(ctx context.Context, incident mode
 func (m *mockServiceNowClient) FindIncidentByCorrelationID(ctx context.Context, correlationID string) (*models.ServiceNowResult, error) {
 	if m.findIncidentByCorrelationFn != nil {
 		return m.findIncidentByCorrelationFn(ctx, correlationID)
+	}
+	return nil, nil
+}
+
+// FindOpenIncidentsByCorrelationID defaults to agreeing with
+// findIncidentByCorrelationFn so tests that only stub the single-result lookup
+// keep exercising the resolved path.
+func (m *mockServiceNowClient) FindOpenIncidentsByCorrelationID(ctx context.Context, correlationID string) ([]models.ServiceNowResult, error) {
+	if m.findOpenIncidentsFn != nil {
+		return m.findOpenIncidentsFn(ctx, correlationID)
+	}
+	if m.findIncidentByCorrelationFn != nil {
+		result, err := m.findIncidentByCorrelationFn(ctx, correlationID)
+		if err != nil {
+			return nil, err
+		}
+		if result == nil {
+			return nil, nil
+		}
+		return []models.ServiceNowResult{*result}, nil
 	}
 	return nil, nil
 }

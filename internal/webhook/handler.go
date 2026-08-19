@@ -3,6 +3,8 @@ package webhook
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +17,7 @@ import (
 type ServiceNowClient interface {
 	CreateIncident(ctx context.Context, incident models.ServiceNowIncident) (*servicenow.CreateIncidentResult, error)
 	FindIncidentByCorrelationID(ctx context.Context, correlationID string) (*models.ServiceNowResult, error)
+	FindOpenIncidentsByCorrelationID(ctx context.Context, correlationID string) ([]models.ServiceNowResult, error)
 	ResolveIncident(ctx context.Context, sysID string) error
 }
 
@@ -83,8 +86,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	// Return 200 OK even if some alerts failed to prevent Alertmanager from retrying
-	// the entire batch. Individual failures are logged for investigation.
+	// When every alert in the payload failed, the cause is almost certainly
+	// systemic — ServiceNow unreachable, credentials rejected — rather than one
+	// bad alert. Return 500 so Alertmanager retries and the failure is visible
+	// instead of silently dropping critical incidents.
+	//
+	// Partial failures still return 200: retrying the whole batch would
+	// re-deliver the alerts that succeeded. This is safe to pair with the dedup
+	// check on the firing path, which finds the already-open incidents and skips
+	// them on the retry.
+	if errCount > 0 && errCount == len(payload.Alerts) {
+		http.Error(w, `{"status":"error"}`, http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
 }
@@ -108,7 +123,8 @@ func (h *Handler) processAlert(ctx context.Context, alert models.Alert, external
 	}
 }
 
-// handleFiringAlert creates a new incident in ServiceNow.
+// handleFiringAlert creates an incident in ServiceNow, unless one is already
+// open for this correlation ID.
 func (h *Handler) handleFiringAlert(ctx context.Context, alert models.Alert, externalURL, correlationID string) error {
 	alertname := alert.Labels["alertname"]
 
@@ -116,6 +132,23 @@ func (h *Handler) handleFiringAlert(ctx context.Context, alert models.Alert, ext
 		"alertname", alertname,
 		"correlation_id", correlationID,
 	)
+
+	// Alertmanager re-notifies for still-firing alerts every repeat_interval,
+	// and a failed-then-retried delivery arrives twice. Without this check each
+	// re-notification opens another incident for the same condition.
+	existing, err := h.snowClient.FindIncidentByCorrelationID(ctx, correlationID)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing incident: %w", err)
+	}
+	if existing != nil {
+		h.logger.Info("open incident already exists, skipping creation",
+			"alertname", alertname,
+			"correlation_id", correlationID,
+			"incident_number", existing.Number,
+			"sys_id", existing.SysID,
+		)
+		return nil
+	}
 
 	incident := h.transformer.Transform(alert, externalURL)
 
@@ -134,38 +167,51 @@ func (h *Handler) handleFiringAlert(ctx context.Context, alert models.Alert, ext
 	return nil
 }
 
-// handleResolvedAlert resolves an existing incident in ServiceNow.
+// handleResolvedAlert resolves every open incident matching the correlation ID.
+// More than one can exist for alerts that fired before dedup was in place.
 func (h *Handler) handleResolvedAlert(ctx context.Context, correlationID, alertname string) error {
 	h.logger.Info("processing resolved alert",
 		"alertname", alertname,
 		"correlation_id", correlationID,
 	)
 
-	// Find existing incident by correlation ID
-	existing, err := h.snowClient.FindIncidentByCorrelationID(ctx, correlationID)
+	existing, err := h.snowClient.FindOpenIncidentsByCorrelationID(ctx, correlationID)
 	if err != nil {
 		return err
 	}
 
-	if existing == nil {
-		h.logger.Warn("no existing incident found for resolved alert",
+	if len(existing) == 0 {
+		h.logger.Warn("no open incident found for resolved alert",
 			"alertname", alertname,
 			"correlation_id", correlationID,
 		)
 		return nil
 	}
 
-	// Resolve the incident
-	if err := h.snowClient.ResolveIncident(ctx, existing.SysID); err != nil {
-		return err
+	// Collect failures rather than returning on the first one: a single
+	// unresolvable incident must not leave the remaining duplicates open with
+	// no alert behind them and no future event that would ever close them.
+	var errs []error
+	for _, inc := range existing {
+		if err := h.snowClient.ResolveIncident(ctx, inc.SysID); err != nil {
+			h.logger.Error("failed to resolve incident",
+				"alertname", alertname,
+				"correlation_id", correlationID,
+				"incident_number", inc.Number,
+				"sys_id", inc.SysID,
+				"error", err,
+			)
+			errs = append(errs, fmt.Errorf("resolve %s: %w", inc.Number, err))
+			continue
+		}
+
+		h.logger.Info("resolved incident in ServiceNow",
+			"alertname", alertname,
+			"correlation_id", correlationID,
+			"sys_id", inc.SysID,
+			"incident_number", inc.Number,
+		)
 	}
 
-	h.logger.Info("resolved incident in ServiceNow",
-		"alertname", alertname,
-		"correlation_id", correlationID,
-		"sys_id", existing.SysID,
-		"incident_number", existing.Number,
-	)
-
-	return nil
+	return errors.Join(errs...)
 }
